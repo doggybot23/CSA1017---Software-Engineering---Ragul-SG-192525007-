@@ -1,0 +1,2063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent Disaster Early Warning & Evacuation Management System</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-base: #0a0e17;
+            --bg-surface: #111827;
+            --bg-card: #182234;
+            --bg-card-hover: #1e2c42;
+            --border-color: #26354a;
+            
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --text-dim: #6b7280;
+
+            --critical: #ef4444;
+            --critical-glow: rgba(239, 68, 68, 0.25);
+            --warning: #f59e0b;
+            --warning-glow: rgba(245, 158, 11, 0.2);
+            --safe: #10b981;
+            --safe-glow: rgba(16, 185, 129, 0.2);
+            --info: #3b82f6;
+            --info-glow: rgba(59, 130, 246, 0.2);
+            --accent: #6366f1;
+
+            --sidebar-width: 260px;
+            --header-height: 70px;
+            --transition-speed: 0.25s;
+        }
+
+        /* Emergency Mode Overrides */
+        body.emergency-active {
+            --bg-base: #140507;
+            --bg-surface: #1c090c;
+            --bg-card: #280e12;
+            --border-color: #57131a;
+            animation: pulseEmergency 4s infinite alternate;
+        }
+
+        @keyframes pulseEmergency {
+            0% { box-shadow: inset 0 0 0 transparent; }
+            100% { box-shadow: inset 0 0 80px rgba(239, 68, 68, 0.35); }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            overflow-x: hidden;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+        /* Typography & Utility */
+        h1, h2, h3, h4 { font-weight: 700; color: #fff; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .badge.critical { background: var(--critical-glow); color: var(--critical); border: 1px solid var(--critical); }
+        .badge.warning { background: var(--warning-glow); color: var(--warning); border: 1px solid var(--warning); }
+        .badge.safe { background: var(--safe-glow); color: var(--safe); border: 1px solid var(--safe); }
+        .badge.info { background: var(--info-glow); color: var(--info); border: 1px solid var(--info); }
+
+        .btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all var(--transition-speed);
+        }
+        .btn:hover { background: var(--bg-card-hover); border-color: var(--text-muted); }
+        .btn.primary { background: var(--info); border-color: var(--info); color: #fff; }
+        .btn.primary:hover { background: #2563eb; }
+        .btn.danger { background: var(--critical); border-color: var(--critical); color: #fff; }
+        .btn.danger:hover { background: #dc2626; }
+        .btn.warning { background: var(--warning); border-color: var(--warning); color: #000; }
+        .btn.warning:hover { background: #d97706; }
+        .btn.success { background: var(--safe); border-color: var(--safe); color: #fff; }
+        .btn.success:hover { background: #059669; }
+
+        /* Sidebar Navigation */
+        aside.sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            transition: transform var(--transition-speed);
+        }
+        .sidebar-brand {
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .sidebar-brand i { font-size: 1.6rem; color: var(--critical); }
+        .sidebar-brand span { font-weight: 800; font-size: 1.05rem; letter-spacing: 0.5px; }
+        
+        .sidebar-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 10px;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .sidebar-menu li a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all var(--transition-speed);
+        }
+        .sidebar-menu li a:hover, .sidebar-menu li.active a {
+            background: var(--bg-card);
+            color: #fff;
+        }
+        .sidebar-menu li.active a {
+            border-left: 3px solid var(--info);
+            color: var(--info);
+            background: rgba(59, 130, 246, 0.1);
+        }
+        .sidebar-menu li a i { width: 20px; text-align: center; }
+
+        /* Main Container */
+        .main-wrapper {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            width: calc(100% - var(--sidebar-width));
+        }
+
+        /* Top Header */
+        header.top-header {
+            height: var(--header-height);
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            position: sticky;
+            top: 0;
+            z-index: 90;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .sidebar-toggle { display: none; background: transparent; border: none; color: #fff; font-size: 1.25rem; cursor: pointer; }
+        
+        .header-status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--safe);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--safe);
+        }
+        .header-status-indicator .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--safe);
+            border-radius: 50%;
+            animation: pulseDot 1.5s infinite;
+        }
+        @keyframes pulseDot {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.4); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        .header-right { display: flex; align-items: center; gap: 20px; }
+        .live-clock {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-align: right;
+            border-right: 1px solid var(--border-color);
+            padding-right: 18px;
+        }
+        .live-clock span { display: block; font-size: 0.75rem; color: var(--text-dim); }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .user-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #fff;
+            border: 2px solid var(--border-color);
+        }
+        .user-info { display: flex; flex-direction: column; }
+        .user-name { font-size: 0.85rem; font-weight: 600; }
+        .user-role { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Emergency Broadcast Banner */
+        .emergency-banner {
+            display: none;
+            background: linear-gradient(90deg, #991b1b, #ef4444, #991b1b);
+            background-size: 200% auto;
+            animation: gradientShift 3s linear infinite;
+            color: #fff;
+            padding: 10px 24px;
+            font-weight: 700;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #f87171;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+        @keyframes gradientShift { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+
+        /* Main Content Body */
+        main.content-area {
+            flex: 1;
+            padding: 24px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 28px;
+        }
+
+        .view-section { display: none; flex-direction: column; gap: 24px; }
+        .view-section.active { display: flex; animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .section-title { font-size: 1.4rem; display: flex; align-items: center; gap: 10px; }
+        .section-title i { color: var(--info); }
+
+        /* Dashboard KPI Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .kpi-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+            transition: transform var(--transition-speed), border-color var(--transition-speed);
+        }
+        .kpi-card:hover { transform: translateY(-3px); border-color: var(--info); }
+        .kpi-header { display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }
+        .kpi-header i { font-size: 1.2rem; }
+        .kpi-value { font-size: 1.8rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+        .kpi-footer { font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+
+        /* Layout Grids */
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+
+        /* Panel / Cards */
+        .panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.01);
+        }
+        .panel-title { font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .panel-body { padding: 18px; flex: 1; }
+
+        /* Sensors Grid */
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 14px;
+        }
+        .sensor-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: all var(--transition-speed);
+        }
+        .sensor-card:hover { border-color: var(--text-dim); }
+        .sensor-top { display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.8rem; }
+        .sensor-val { font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+        /* AI Risk Panel */
+        .risk-bars-container { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+        .risk-bar-item { display: flex; flex-direction: column; gap: 6px; }
+        .risk-info-row { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; }
+        .progress-track { width: 100%; height: 8px; background: var(--bg-card); border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease-in-out; }
+        .fill-red { background: var(--critical); box-shadow: 0 0 8px var(--critical); }
+        .fill-orange { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
+        .fill-green { background: var(--safe); box-shadow: 0 0 8px var(--safe); }
+        .fill-blue { background: var(--info); box-shadow: 0 0 8px var(--info); }
+
+        /* Map Container */
+        #gisMap {
+            width: 100%;
+            height: 480px;
+            border-radius: 6px;
+            z-index: 10;
+        }
+        .map-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding-top: 12px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* Tables */
+        .custom-table-container { width: 100%; overflow-x: auto; }
+        table.custom-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.85rem;
+        }
+        table.custom-table th {
+            background: var(--bg-card);
+            padding: 12px 14px;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+        table.custom-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+        table.custom-table tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+        /* Forms & Inputs */
+        .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+        .form-group label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+        .form-control {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color var(--transition-speed);
+        }
+        .form-control:focus { border-color: var(--info); }
+        textarea.form-control { resize: vertical; min-height: 80px; }
+
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-box {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            width: 100%;
+            max-width: 540px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            animation: modalPop 0.2s ease-out;
+        }
+        @keyframes modalPop { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-body { padding: 20px; }
+        .modal-footer {
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* Toast Notifications System */
+        #toastContainer {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--info);
+            padding: 14px 18px;
+            border-radius: 6px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            color: #fff;
+            min-width: 280px;
+            max-width: 360px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            transform: translateX(100%);
+            animation: toastSlideIn 0.3s forwards;
+            font-size: 0.85rem;
+        }
+        .toast.critical { border-left-color: var(--critical); }
+        .toast.warning { border-left-color: var(--warning); }
+        .toast.success { border-left-color: var(--safe); }
+        @keyframes toastSlideIn { to { transform: translateX(0); } }
+
+        /* Route Planning Cards */
+        .route-card {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 14px;
+            background: var(--bg-card);
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all var(--transition-speed);
+        }
+        .route-card:hover, .route-card.selected {
+            border-color: var(--info);
+            background: rgba(59, 130, 246, 0.08);
+        }
+        .route-card.avoid { border-color: rgba(239, 68, 68, 0.4); }
+        .route-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+
+        /* Coordination Grid */
+        .agency-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .agency-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* Footer */
+        footer.main-footer {
+            margin-top: auto;
+            padding: 16px 28px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-surface);
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-align: center;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .grid-2, .grid-2-1, .grid-1-2, .grid-3 { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+            aside.sidebar { transform: translateX(-100%); }
+            aside.sidebar.mobile-open { transform: translateX(0); }
+            .main-wrapper { margin-left: 0; width: 100%; }
+            .sidebar-toggle { display: block; }
+            header.top-header { padding: 0 16px; }
+            main.content-area { padding: 16px; }
+            .live-clock { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>AEGIS COMMAND</span>
+        </div>
+        <ul class="sidebar-menu">
+            <li class="active"><a href="#" onclick="switchView('dashboard', event)"><i class="fa-solid fa-gauge-high"></i> Dashboard</a></li>
+            <li><a href="#" onclick="switchView('live-monitoring', event)"><i class="fa-solid fa-microchip"></i> Live Monitoring</a></li>
+            <li><a href="#" onclick="switchView('disaster-risk', event)"><i class="fa-solid fa-brain"></i> Disaster Risk (AI)</a></li>
+            <li><a href="#" onclick="switchView('gis-map', event)"><i class="fa-solid fa-map-location-dot"></i> GIS Tactical Map</a></li>
+            <li><a href="#" onclick="switchView('evacuation', event)"><i class="fa-solid fa-route"></i> Evacuation Plan</a></li>
+            <li><a href="#" onclick="switchView('shelters', event)"><i class="fa-solid fa-person-shelter"></i> Safe Shelters</a></li>
+            <li><a href="#" onclick="switchView('alerts', event)"><i class="fa-solid fa-triangle-exclamation"></i> Emergency Alerts</a></li>
+            <li><a href="#" onclick="switchView('citizen-reports', event)"><i class="fa-solid fa-bullhorn"></i> Citizen Reports</a></li>
+            <li><a href="#" onclick="switchView('rescue-ops', event)"><i class="fa-solid fa-truck-droplet"></i> Rescue Operations</a></li>
+            <li><a href="#" onclick="switchView('resources', event)"><i class="fa-solid fa-boxes-stacked"></i> Resources</a></li>
+            <li><a href="#" onclick="switchView('coordination', event)"><i class="fa-solid fa-network-wired"></i> Coordination</a></li>
+        </ul>
+    </aside>
+
+    <div class="main-wrapper">
+        
+        <header class="top-header">
+            <div class="header-left">
+                <button class="sidebar-toggle" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+                <div class="header-status-indicator">
+                    <div class="pulse-dot"></div>
+                    <span id="systemStatusText">SYSTEM ONLINE</span>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="live-clock">
+                    <div id="liveClockTime" class="mono">--:--:-- UTC</div>
+                    <span id="liveClockDate">---------</span>
+                </div>
+                <button class="btn danger" onclick="toggleEmergencyMode()" id="emergencyBtn">
+                    <i class="fa-solid fa-radiation"></i> <span id="emergencyBtnText">ACTIVATE EMERGENCY</span>
+                </button>
+                <div class="user-profile">
+                    <div class="user-avatar">NZ</div>
+                    <div class="user-info">
+                        <span class="user-name">Commander Nathan</span>
+                        <span class="user-role">Authority Admin</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="emergency-banner" id="emergencyBanner">
+            <div style="display:flex; align-items:center; gap: 12px;">
+                <i class="fa-solid fa-triangle-exclamation fa-beat-fade fa-lg"></i>
+                <span>STATE-WIDE EMERGENCY PROTOCOL LEVEL-1 ACTIVE: FLOOD INUNDATION AND EVACUATION WARNING</span>
+            </div>
+            <button class="btn" style="background: rgba(0,0,0,0.4); color:#fff; border-color: #fff;" onclick="openBroadcastModal()">BROADCAST OVERRIDE</button>
+        </div>
+
+        <main class="content-area">
+
+            <section id="dashboard" class="view-section active">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-gauge-high"></i> Crisis Command Overview</h2>
+                    <div style="display:flex; gap: 10px;">
+                        <button class="btn primary" onclick="refreshDashboardData()"><i class="fa-solid fa-rotate"></i> Sync Feed</button>
+                        <button class="btn warning" onclick="openBroadcastModal()"><i class="fa-solid fa-tower-broadcast"></i> Broadcast Alert</button>
+                    </div>
+                </div>
+
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-header"><span>Overall Risk Level</span> <i class="fa-solid fa-gauge" style="color:var(--critical);"></i></div>
+                        <div class="kpi-value" style="color:var(--critical);" id="kpiRisk">CRITICAL</div>
+                        <div class="kpi-footer"><i class="fa-solid fa-arrow-trend-up"></i> +18% past 3 hrs</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header"><span>Active Disasters</span> <i class="fa-solid fa-cloud-bolt" style="color:var(--warning);"></i></div>
+                        <div class="kpi-value" id="kpiDisasters">03</div>
+                        <div class="kpi-footer"><span class="badge critical">2 Severe</span></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header"><span>Population at Risk</span> <i class="fa-solid fa-users" style="color:var(--info);"></i></div>
+                        <div class="kpi-value" id="kpiPopulation">24,850</div>
+                        <div class="kpi-footer">North & Coastal Sectors</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header"><span>Shelter Availability</span> <i class="fa-solid fa-tents" style="color:var(--safe);"></i></div>
+                        <div class="kpi-value" id="kpiShelters">18 / 24</div>
+                        <div class="kpi-footer">75% Capacity Operational</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header"><span>Deployed Rescue Teams</span> <i class="fa-solid fa-truck-droplet" style="color:var(--accent);"></i></div>
+                        <div class="kpi-value" id="kpiTeams">42</div>
+                        <div class="kpi-footer">8 Teams On Standby</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header"><span>Active Broadcasts</span> <i class="fa-solid fa-bullhorn" style="color:var(--warning);"></i></div>
+                        <div class="kpi-value" id="kpiAlerts">07</div>
+                        <div class="kpi-footer">Across 6 Comm Channels</div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fa-solid fa-person-walking-arrow-right"></i> Metro Evacuation Progress Tracking</span>
+                        <span class="badge warning" id="evacStatusBadge">70.2% COMPLETED</span>
+                    </div>
+                    <div class="panel-body">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; font-size: 0.9rem;">
+                            <span>Evacuated: <strong class="mono" style="color:var(--safe);" id="evacPeopleCount">17,430</strong></span>
+                            <span>Remaining: <strong class="mono" style="color:var(--critical);" id="remainPeopleCount">7,420</strong></span>
+                            <span>Target: <strong class="mono">24,850</strong></span>
+                        </div>
+                        <div class="progress-track" style="height: 14px;">
+                            <div class="progress-fill fill-green" id="evacProgressBar" style="width: 70.2%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-chart-line"></i> Hydrological & Precipitation Trends (12h)</span>
+                        </div>
+                        <div class="panel-body">
+                            <canvas id="weatherChart" height="200"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-chart-area"></i> Multi-Hazard Risk Matrix (7 Days)</span>
+                        </div>
+                        <div class="panel-body">
+                            <canvas id="riskTrendChart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-2-1">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-triangle-exclamation"></i> Live Emergency Feeds</span>
+                            <button class="btn" style="padding: 4px 8px; font-size: 0.75rem;" onclick="switchView('alerts', event)">View All</button>
+                        </div>
+                        <div class="panel-body custom-table-container">
+                            <table class="custom-table">
+                                <thead>
+                                    <tr>
+                                        <th>Level</th>
+                                        <th>Location</th>
+                                        <th>Event</th>
+                                        <th>Time</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboardAlertsTable">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-satellite-dish"></i> Telemetry Summary</span>
+                        </div>
+                        <div class="panel-body" style="display:flex; flex-direction:column; gap: 12px;">
+                            <div class="sensor-card">
+                                <div class="sensor-top"><span>Max River Level</span> <span class="badge critical">CRITICAL</span></div>
+                                <div class="sensor-val" style="color:var(--critical);">5.8 m</div>
+                                <div class="sensor-bottom" style="font-size:0.75rem; color:var(--text-dim);">Sensor: North Basin Stn 03 (+0.4m/hr)</div>
+                            </div>
+                            <div class="sensor-card">
+                                <div class="sensor-top"><span>Wind Gusts</span> <span class="badge warning">WARNING</span></div>
+                                <div class="sensor-val" style="color:var(--warning);">74 km/h</div>
+                                <div class="sensor-bottom" style="font-size:0.75rem; color:var(--text-dim);">Sensor: Coastal Radar Array 01</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="live-monitoring" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-microchip"></i> Real-Time Environmental Sensor Network</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <span class="badge info"><i class="fa-solid fa-tower-broadcast"></i> Telemetry Online: 32 Stations</span>
+                        <button class="btn primary" onclick="forceSensorUpdate()"><i class="fa-solid fa-arrows-rotate"></i> Poll Now</button>
+                    </div>
+                </div>
+
+                <div class="sensor-grid" id="sensorGridContainer">
+                    </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fa-solid fa-wave-square"></i> Live Telemetry Stream Log</span>
+                        <span class="badge safe">Receiving packets</span>
+                    </div>
+                    <div class="panel-body mono" id="sensorLogConsole" style="background:#090d14; height: 180px; overflow-y: auto; font-size: 0.8rem; color:#10b981; line-height: 1.6;">
+                        </div>
+                </div>
+            </section>
+
+            <section id="disaster-risk" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-brain"></i> AI Multi-Hazard Risk & Impact Prediction</h2>
+                    <button class="btn primary" id="runAiBtn" onclick="runAiPredictionSimulation()"><i class="fa-solid fa-wand-magic-sparkles"></i> RUN AI RISK ANALYSIS</button>
+                </div>
+
+                <div class="grid-2">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-calculator"></i> Real-time AI Hazard Probability Engine</span>
+                            <span class="badge info" id="aiModelTag">Model: ENSEMBLE-V4.2</span>
+                        </div>
+                        <div class="panel-body">
+                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+                                Neural network multi-layer risk assessment aggregating telemetry, atmospheric pressure models, precipitation rate, and geographical elevation data.
+                            </p>
+                            <div class="risk-bars-container">
+                                <div class="risk-bar-item">
+                                    <div class="risk-info-row"><span><i class="fa-solid fa-water"></i> Flood Inundation Risk</span><span id="aiFloodVal" class="mono">87%</span></div>
+                                    <div class="progress-track"><div class="progress-fill fill-red" id="aiFloodBar" style="width: 87%;"></div></div>
+                                </div>
+                                <div class="risk-bar-item">
+                                    <div class="risk-info-row"><span><i class="fa-solid fa-tornado"></i> Cyclone / Storm Surge Risk</span><span id="aiCycloneVal" class="mono">64%</span></div>
+                                    <div class="progress-track"><div class="progress-fill fill-orange" id="aiCycloneBar" style="width: 64%;"></div></div>
+                                </div>
+                                <div class="risk-bar-item">
+                                    <div class="risk-info-row"><span><i class="fa-solid fa-fire"></i> Wildfire Probability</span><span id="aiFireVal" class="mono">22%</span></div>
+                                    <div class="progress-track"><div class="progress-fill fill-green" id="aiFireBar" style="width: 22%;"></div></div>
+                                </div>
+                                <div class="risk-bar-item">
+                                    <div class="risk-info-row"><span><i class="fa-solid fa-volcano"></i> Seismic / Landslide Risk</span><span id="aiSeismicVal" class="mono">18%</span></div>
+                                    <div class="progress-track"><div class="progress-fill fill-blue" id="aiSeismicBar" style="width: 18%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-robot"></i> Automated AI Synthesis Report</span>
+                            <span class="badge critical" id="aiStatusBadge">CRITICAL THREAT</span>
+                        </div>
+                        <div class="panel-body" style="display:flex; flex-direction:column; justify-content:space-between;">
+                            <div>
+                                <h3 style="color:var(--critical); font-size:1.1rem; margin-bottom: 8px;" id="aiSummaryHeadline">HIGH FLOOD RISK PREDICTED IN ZONE A & B</h3>
+                                <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.6;" id="aiExplanationText">
+                                    Rapid rainfall increase (126 mm/hr) and river stage increase (5.8m) indicate a 94.2% probability of flash flooding within the next 90 minutes. Low-lying urban sectors are projected to experience 1.2m water logging.
+                                </p>
+                            </div>
+                            <div style="background:var(--bg-card); padding:14px; border-radius:6px; border:1px solid var(--border-color); margin-top:16px;">
+                                <div style="font-weight:700; font-size:0.85rem; margin-bottom:6px; color:#fff;"><i class="fa-solid fa-lightbulb" style="color:var(--warning);"></i> Recommended Strategic Counter-Measures:</div>
+                                <ul style="font-size:0.8rem; color:var(--text-muted); padding-left:18px; line-height:1.5;">
+                                    <li>Order prioritized evacuation of Chennai North Zone.</li>
+                                    <li>Pre-deploy rescue watercraft to Sector 4 and 9.</li>
+                                    <li>Alert regional medical facilities of potential road cutoffs.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="gis-map" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-map-location-dot"></i> GIS Tactical Operations Map</h2>
+                    <div style="display:flex; gap: 8px;">
+                        <button class="btn" onclick="centerMapOnZone('all')"><i class="fa-solid fa-expand"></i> Reset View</button>
+                        <button class="btn danger" onclick="centerMapOnZone('critical')"><i class="fa-solid fa-triangle-exclamation"></i> Focus Critical Zone</button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-body" style="padding: 10px;">
+                        <div id="gisMap"></div>
+                        <div class="map-legend">
+                            <div class="legend-item"><div class="legend-dot" style="background:var(--critical);"></div> Critical Hazard Zone</div>
+                            <div class="legend-item"><div class="legend-dot" style="background:var(--warning);"></div> Warning Zone</div>
+                            <div class="legend-item"><div class="legend-dot" style="background:var(--safe);"></div> Safe Zone</div>
+                            <div class="legend-item"><span>🏥</span> Hospital</div>
+                            <div class="legend-item"><span>🏠</span> Safe Shelter</div>
+                            <div class="legend-item"><span>🚒</span> Fire Rescue Unit</div>
+                            <div class="legend-item"><span>🚓</span> Police Patrol</div>
+                            <div class="legend-item"><span style="color:var(--safe); font-weight:bold;">— —</span> Active Evacuation Route</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="evacuation" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-route"></i> Intelligent Evacuation Route Optimization</h2>
+                    <button class="btn success" onclick="triggerEvacuationExecution()"><i class="fa-solid fa-play"></i> START EVACUATION</button>
+                </div>
+
+                <div class="grid-2-1">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-compass"></i> Dynamic Route Feasibility Engine</span>
+                            <button class="btn primary" style="font-size:0.75rem;" onclick="recalculateRoutes()"><i class="fa-solid fa-calculator"></i> Recalculate AI Pathing</button>
+                        </div>
+                        <div class="panel-body">
+                            <div style="background:var(--bg-card); padding:12px; border-radius:6px; margin-bottom:14px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                                <div><span style="color:var(--text-dim); font-size:0.75rem;">Affected Area:</span> <strong style="display:block;">Chennai North Sector 4</strong></div>
+                                <div><span style="color:var(--text-dim); font-size:0.75rem;">Population at Risk:</span> <strong style="display:block; color:var(--critical);">12,500 Citizens</strong></div>
+                                <div><span style="color:var(--text-dim); font-size:0.75rem;">Nearest Safe Zone:</span> <strong style="display:block; color:var(--safe);">Govt Relief Complex 01</strong></div>
+                            </div>
+
+                            <div id="routeOptionsContainer">
+                                </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-traffic-light"></i> Traffic & Road Conditions</span>
+                        </div>
+                        <div class="panel-body" style="display:flex; flex-direction:column; gap: 12px;">
+                            <div class="sensor-card">
+                                <div class="sensor-top"><span>Main Arterial Hwy 45</span> <span class="badge critical">BLOCKED</span></div>
+                                <div class="sensor-val" style="font-size:1.1rem; color:var(--critical);">Inundation: 0.9m</div>
+                                <p style="font-size:0.75rem; color:var(--text-muted);">Traffic halted. Rerouting all convoys to Secondary Bypass.</p>
+                            </div>
+                            <div class="sensor-card">
+                                <div class="sensor-top"><span>Eastern Coastal Ring Road</span> <span class="badge warning">CONGESTED</span></div>
+                                <div class="sensor-val" style="font-size:1.1rem; color:var(--warning);">Speed: 14 km/h</div>
+                                <p style="font-size:0.75rem; color:var(--text-muted);">Heavy civilian movement. Police unit 08 managing intersection.</p>
+                            </div>
+                            <div class="sensor-card">
+                                <div class="sensor-top"><span>Western Elevated Expressway</span> <span class="badge safe">CLEAR</span></div>
+                                <div class="sensor-val" style="font-size:1.1rem; color:var(--safe);">Speed: 60 km/h</div>
+                                <p style="font-size:0.75rem; color:var(--text-muted);">Designated express corridor for rescue and bus fleets.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="shelters" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-person-shelter"></i> Emergency Shelter Network</h2>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" class="form-control" id="shelterSearchInput" placeholder="Filter shelters..." oninput="filterShelters()">
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-body custom-table-container">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Shelter Name</th>
+                                    <th>Sector</th>
+                                    <th>Capacity</th>
+                                    <th>Occupancy Status</th>
+                                    <th>Available Space</th>
+                                    <th>Medical Unit</th>
+                                    <th>Food/Water</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="shelterTableBody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="alerts" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-triangle-exclamation"></i> Early Warning Broadcast & Alert Center</h2>
+                    <button class="btn warning" onclick="openBroadcastModal()"><i class="fa-solid fa-bullhorn"></i> COMPOSE BROADCAST</button>
+                </div>
+
+                <div class="grid-2-1">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-list-check"></i> Active Broadcast Log</span>
+                            <span class="badge info" id="activeAlertsCountBadge">7 Live Alerts</span>
+                        </div>
+                        <div class="panel-body custom-table-container">
+                            <table class="custom-table">
+                                <thead>
+                                    <tr>
+                                        <th>Severity</th>
+                                        <th>Location</th>
+                                        <th>Disaster Warning</th>
+                                        <th>Time</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="alertsFullTableBody">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-satellite"></i> Multi-Channel Delivery Stats</span>
+                        </div>
+                        <div class="panel-body" style="display:flex; flex-direction:column; gap: 14px;">
+                            <div>
+                                <div class="risk-info-row"><span><i class="fa-solid fa-comment-sms"></i> Emergency SMS Gateway</span><span class="mono" style="color:var(--safe);">98.7%</span></div>
+                                <div class="progress-track"><div class="progress-fill fill-green" style="width: 98.7%;"></div></div>
+                            </div>
+                            <div>
+                                <div class="risk-info-row"><span><i class="fa-solid fa-mobile-screen"></i> Aegis Citizen App Push</span><span class="mono" style="color:var(--safe);">96.2%</span></div>
+                                <div class="progress-track"><div class="progress-fill fill-green" style="width: 96.2%;"></div></div>
+                            </div>
+                            <div>
+                                <div class="risk-info-row"><span><i class="fa-solid fa-envelope"></i> Email Notification Batch</span><span class="mono" style="color:var(--safe);">94.8%</span></div>
+                                <div class="progress-track"><div class="progress-fill fill-green" style="width: 94.8%;"></div></div>
+                            </div>
+                            <div>
+                                <div class="risk-info-row"><span><i class="fa-solid fa-volume-high"></i> Acoustic Warning Sirens</span><span class="mono" style="color:var(--safe);">100% Operational</span></div>
+                                <div class="progress-track"><div class="progress-fill fill-green" style="width: 100%;"></div></div>
+                            </div>
+                            <div>
+                                <div class="risk-info-row"><span><i class="fa-brands fa-x-twitter"></i> Social Media Auto-Feeds</span><span class="mono" style="color:var(--info);">ACTIVE (Synced)</span></div>
+                                <div class="progress-track"><div class="progress-fill fill-blue" style="width: 100%;"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="citizen-reports" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-bullhorn"></i> Citizen Incident & Distress Reporting</h2>
+                    <span class="badge info">Crowdsourced Intelligence</span>
+                </div>
+
+                <div class="grid-1-2">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-pen-to-square"></i> Submit Distress Incident</span>
+                        </div>
+                        <div class="panel-body">
+                            <form id="citizenReportForm" onsubmit="handleReportSubmit(event)">
+                                <div class="form-group">
+                                    <label>Reporter Full Name</label>
+                                    <input type="text" class="form-control" id="repName" placeholder="e.g. Ramesh Kumar" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Incident Type</label>
+                                    <select class="form-control" id="repType" required>
+                                        <option value="Flooding">Flooding / Waterlogging</option>
+                                        <option value="Blocked Road">Blocked Road / Debris</option>
+                                        <option value="Fire">Fire / Electrical Short</option>
+                                        <option value="Medical Emergency">Medical Emergency / Trapped</option>
+                                        <option value="Missing Person">Missing Person</option>
+                                        <option value="Infrastructure Damage">Infrastructure Damage</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Sector / Street Location</label>
+                                    <input type="text" class="form-control" id="repLocation" placeholder="e.g. Velachery Main Rd, Ward 12" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Severity Level</label>
+                                    <select class="form-control" id="repSeverity">
+                                        <option value="CRITICAL">CRITICAL (Immediate Life Threat)</option>
+                                        <option value="WARNING">WARNING (High Risk)</option>
+                                        <option value="INFORMATION">INFORMATION (Moderate / Inconvenience)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Situation Description</label>
+                                    <textarea class="form-control" id="repDesc" placeholder="Describe the scene, number of trapped individuals, hazards..." required></textarea>
+                                </div>
+                                <button type="submit" class="btn primary" style="width:100%;"><i class="fa-solid fa-paper-plane"></i> SUBMIT REPORT</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-list-ul"></i> Citizen Distress Feed</span>
+                            <input type="text" class="form-control" style="width:200px; padding:4px 8px;" placeholder="Search reports..." id="reportFilterInput" oninput="filterReports()">
+                        </div>
+                        <div class="panel-body custom-table-container">
+                            <table class="custom-table">
+                                <thead>
+                                    <tr>
+                                        <th>Reporter</th>
+                                        <th>Type</th>
+                                        <th>Location</th>
+                                        <th>Severity</th>
+                                        <th>Description</th>
+                                        <th>Time</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="citizenReportsTableBody">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="rescue-ops" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-truck-droplet"></i> Emergency Rescue Missions & Deployment Tracker</h2>
+                    <button class="btn primary" onclick="openDispatchModal()"><i class="fa-solid fa-plus"></i> DISPATCH NEW UNIT</button>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-body custom-table-container">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Unit Call-Sign</th>
+                                    <th>Department</th>
+                                    <th>Assigned Sector</th>
+                                    <th>Current Mission</th>
+                                    <th>Personnel</th>
+                                    <th>Operational Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rescueOpsTableBody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="resources" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-boxes-stacked"></i> Emergency Relief Resources & Logistics</h2>
+                    <button class="btn primary" onclick="openResourceModal()"><i class="fa-solid fa-dolly"></i> REALLOCATE INVENTORY</button>
+                </div>
+
+                <div class="grid-3" id="resourcesGridContainer">
+                    </div>
+            </section>
+
+            <section id="coordination" class="view-section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fa-solid fa-network-wired"></i> Inter-Agency Command & Coordination Center</h2>
+                    <span class="badge safe"><i class="fa-solid fa-signal"></i> Encrypted Net Active</span>
+                </div>
+
+                <div class="agency-grid" id="agencyGridContainer">
+                    </div>
+            </section>
+
+        </main>
+
+        <footer class="main-footer">
+            <p><strong>SIMULATION DISCLAIMER:</strong> Prototype for academic and demonstration purposes. Disaster predictions, alerts, routes, and sensor readings shown in this system are simulated and must not be used for real emergency decision-making.</p>
+        </footer>
+    </div>
+
+    <div class="modal-overlay" id="broadcastModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3 style="font-size:1.1rem; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-tower-broadcast" style="color:var(--warning);"></i> Broadcast Emergency Alert</h3>
+                <button onclick="closeBroadcastModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.2rem;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Hazard Category</label>
+                    <select class="form-control" id="modalDisasterType">
+                        <option value="Flood Warning">Flash Flood Alert</option>
+                        <option value="Cyclone Warning">Severe Cyclone Advisory</option>
+                        <option value="Evacuation Order">Mandatory Evacuation Notice</option>
+                        <option value="Tsunami Warning">Coastal Tsunami Advisory</option>
+                        <option value="Chemical Hazard">Hazardous Material Alert</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Target Zone / Location</label>
+                    <input type="text" class="form-control" id="modalAlertLocation" value="Chennai North & Low-Lying Basins">
+                </div>
+                <div class="form-group">
+                    <label>Severity Level</label>
+                    <select class="form-control" id="modalAlertSeverity">
+                        <option value="CRITICAL">CRITICAL - Extreme Danger</option>
+                        <option value="WARNING">WARNING - High Priority</option>
+                        <option value="INFORMATION">INFORMATION - Advisory</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Alert Message (Will broadcast to SMS/Sirens/Apps)</label>
+                    <textarea class="form-control" id="modalAlertMsg">Severe flash flooding imminent within 60 mins. Evacuate immediately via North Bypass to Shelter A.</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeBroadcastModal()">Cancel</button>
+                <button class="btn danger" onclick="submitBroadcastAlert()"><i class="fa-solid fa-bullhorn"></i> TRANSMIT BROADCAST</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="dispatchModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3 style="font-size:1.1rem; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-truck-droplet" style="color:var(--info);"></i> Dispatch Emergency Rescue Unit</h3>
+                <button onclick="closeDispatchModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.2rem;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Unit Name</label>
+                    <input type="text" class="form-control" id="modalUnitName" placeholder="e.g. Strike Force Bravo 07">
+                </div>
+                <div class="form-group">
+                    <label>Department</label>
+                    <select class="form-control" id="modalUnitDept">
+                        <option value="NDRF / Disaster Response">NDRF / Disaster Response</option>
+                        <option value="Fire & Rescue Tactical">Fire & Rescue Tactical</option>
+                        <option value="Paramedic Trauma Unit">Paramedic Trauma Unit</option>
+                        <option value="Coast Guard Watercraft">Coast Guard Watercraft</option>
+                        <option value="Military Engineering Group">Military Engineering Group</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Deployment Zone</label>
+                    <input type="text" class="form-control" id="modalUnitLoc" placeholder="e.g. Sector 8 Inundation Area">
+                </div>
+                <div class="form-group">
+                    <label>Primary Mission</label>
+                    <input type="text" class="form-control" id="modalUnitMission" placeholder="e.g. Watercraft extraction of stranded citizens">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeDispatchModal()">Cancel</button>
+                <button class="btn primary" onclick="submitDispatchUnit()"><i class="fa-solid fa-location-arrow"></i> CONFIRM DISPATCH</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer"></div>
+
+    <script>
+        /* =========================================================================
+           1. MOCK DATA STORE & STATE MANAGEMENT
+           ========================================================================= */
+        const state = {
+            emergencyMode: false,
+            evacuatedCount: 17430,
+            totalAtRisk: 24850,
+            selectedRouteId: 'route-a',
+            sensors: [
+                { id: 's1', name: 'Ambient Temperature', val: 31.8, unit: '°C', status: 'NORMAL', icon: 'fa-temperature-half' },
+                { id: 's2', name: 'Precipitation Rate', val: 126.0, unit: 'mm/hr', status: 'CRITICAL', icon: 'fa-cloud-showers-heavy' },
+                { id: 's3', name: 'North River Level', val: 5.8, unit: 'm', status: 'CRITICAL', icon: 'fa-water' },
+                { id: 's4', name: 'Sustained Wind Speed', val: 74.0, unit: 'km/h', status: 'WARNING', icon: 'fa-wind' },
+                { id: 's5', name: 'Soil Saturation', val: 94.2, unit: '%', status: 'CRITICAL', icon: 'fa-seedling' },
+                { id: 's6', name: 'Air Quality (AQI)', val: 42, unit: 'AQI', status: 'NORMAL', icon: 'fa-smog' },
+                { id: 's7', name: 'Seismic Vibration', val: 3.8, unit: 'Richter', status: 'WARNING', icon: 'fa-wave-square' },
+                { id: 's8', name: 'Fire / Thermal Plume', val: 18, unit: 'Index', status: 'NORMAL', icon: 'fa-fire-flame-curved' }
+            ],
+            shelters: [
+                { id: 'sh1', name: 'Govt Model Senior Secondary School', location: 'Chennai North - Zone A', capacity: 1200, occupied: 1050, medical: 'Available (3 Doctors)', food: 'Supplied (3 Days)', status: 'OPEN' },
+                { id: 'sh2', name: 'Anna Stadium Sports Indoor Complex', location: 'Central Sector - Zone B', capacity: 2500, occupied: 1600, medical: 'Available (Full Clinic)', food: 'Supplied (5 Days)', status: 'OPEN' },
+                { id: 'sh3', name: 'Perambur Community Center', location: 'Perambur Ward 4', capacity: 800, occupied: 790, medical: 'Limited (1 Nurse)', food: 'Critical Low', status: 'FULL' },
+                { id: 'sh4', name: 'Loyola College Relief Wing', location: 'Nungambakkam Corridor', capacity: 1500, occupied: 420, medical: 'Available (Paramedics)', food: 'Supplied (7 Days)', status: 'OPEN' },
+                { id: 'sh5', name: 'Tambaram Transit Relief Base', location: 'South Outskirts', capacity: 3000, occupied: 850, medical: 'Available (Field Hospital)', food: 'Supplied (10 Days)', status: 'OPEN' }
+            ],
+            alerts: [
+                { id: 'alt-1', severity: 'CRITICAL', location: 'North Low-Lying Basin', message: 'Flash flood alert issued. Evacuation corridors now active.', time: '10 mins ago', status: 'BROADCASTED' },
+                { id: 'alt-2', severity: 'WARNING', location: 'Coastal Marina Sector', message: 'Severe storm surge & sea swell up to 3.5m expected within 2 hrs.', time: '25 mins ago', status: 'BROADCASTED' },
+                { id: 'alt-3', severity: 'INFORMATION', location: 'Central Relief Center', message: 'Shelter Anna Stadium food and medical replenishment arrived.', time: '40 mins ago', status: 'RESOLVED' },
+                { id: 'alt-4', severity: 'CRITICAL', location: 'Arterial Hwy 45', message: 'Highway submerged. All convoy logistics diverted to Bypass Road.', time: '1 hr ago', status: 'BROADCASTED' }
+            ],
+            citizenReports: [
+                { id: 'rep-101', name: 'S. Rajesh', type: 'Flooding', location: 'Velachery 7th Cross', severity: 'CRITICAL', desc: 'Water entered 1st floor houses, 6 elderly people stranded on rooftop.', time: '8 mins ago' },
+                { id: 'rep-102', name: 'Deepa Mani', type: 'Blocked Road', location: 'Poonamallee High Rd', severity: 'WARNING', desc: 'Massive banyan tree collapsed across both lanes, power cables down.', time: '18 mins ago' },
+                { id: 'rep-103', name: 'K. Vinod', type: 'Medical Emergency', location: 'Manali Ward 3', severity: 'CRITICAL', desc: 'Dialysis patient needs oxygen transport. Road underwater.', time: '30 mins ago' }
+            ],
+            rescueTeams: [
+                { id: 'tm-1', name: 'NDRF Strike Force 01', dept: 'National Disaster Response', location: 'Chennai North Sector 4', mission: 'Boat extraction of stranded civilians', personnel: 24, status: 'RESCUING' },
+                { id: 'tm-2', name: 'Fire & Rescue Tactical Unit 08', dept: 'State Fire Service', location: 'Arterial Hwy 45 Crossing', mission: 'Clearing submerged tree barricades', personnel: 16, status: 'DEPLOYED' },
+                { id: 'tm-3', name: 'Marine Commando Swimmers', dept: 'Indian Coast Guard', location: 'Ennore River Basin', mission: 'Assisting riverbank dyke fortification', personnel: 12, status: 'ACTIVE' },
+                { id: 'tm-4', name: 'Paramedic Rapid Response 03', dept: 'State Health Dept', location: 'Perambur Relief Center', mission: 'Trauma care and oxygen supply triage', personnel: 8, status: 'AVAILABLE' }
+            ],
+            resources: [
+                { id: 'r1', name: 'Emergency Ration Packets', available: 45000, required: 60000, unit: 'Pks', icon: 'fa-utensils' },
+                { id: 'r2', name: 'Potable Drinking Water', available: 82000, required: 100000, unit: 'Liters', icon: 'fa-bottle-water' },
+                { id: 'r3', name: 'Trauma & First-Aid Kits', available: 1420, required: 2000, unit: 'Kits', icon: 'fa-kit-medical' },
+                { id: 'r4', name: 'Inflatable Rescue Boats', available: 38, required: 50, unit: 'Boats', icon: 'fa-sailboat' },
+                { id: 'r5', name: 'Emergency Blankets & Cots', available: 12400, required: 15000, unit: 'Units', icon: 'fa-bed' },
+                { id: 'r6', name: 'Tactical Diesel Generators', available: 26, required: 30, unit: 'GenSets', icon: 'fa-bolt' }
+            ],
+            agencies: [
+                { name: 'Disaster Management Authority (SDMA)', role: 'Strategic Command & EOC Control', personnel: 180, units: 14, status: 'Connected', signal: 'safe' },
+                { name: 'State Police Department', role: 'Perimeter Security & Traffic Diversion', personnel: 1200, units: 85, status: 'Connected', signal: 'safe' },
+                { name: 'Fire & Emergency Rescue Services', role: 'Inundation Extraction & Hazmat Response', personnel: 640, units: 48, status: 'Connected', signal: 'safe' },
+                { name: 'State Health & Medical Services', role: 'Field Hospitals, Triage & Epidemic Control', personnel: 450, units: 32, status: 'Limited', signal: 'warning' },
+                { name: 'Municipal Corporation (GCC)', role: 'Drainage Pumping, Debris & Relief Shelters', personnel: 2200, units: 110, status: 'Connected', signal: 'safe' },
+                { name: 'Red Cross & Relief NGOs', role: 'Food Distribution & Psychological Support', personnel: 850, units: 40, status: 'Connected', signal: 'safe' }
+            ]
+        };
+
+        /* =========================================================================
+           2. INITIALIZATION & LIVE CLOCK
+           ========================================================================= */
+        let gisMapInstance = null;
+        let weatherChartInstance = null;
+        let riskTrendChartInstance = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initClock();
+            initCharts();
+            initMap();
+            renderAllComponents();
+            
+            // Sensor Auto-Update Interval (Every 4.5 seconds)
+            setInterval(simulateSensorFlicker, 4500);
+        });
+
+        function initClock() {
+            function update() {
+                const now = new Date();
+                document.getElementById('liveClockTime').innerText = now.toUTCString().slice(17, 25) + ' UTC';
+                document.getElementById('liveClockDate').innerText = now.toDateString();
+            }
+            update();
+            setInterval(update, 1000);
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('mobile-open');
+        }
+
+        /* =========================================================================
+           3. NAVIGATION & VIEW SWITCHING
+           ========================================================================= */
+        function switchView(viewId, event) {
+            if (event) event.preventDefault();
+            
+            // Hide all sections
+            document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+            
+            // Show target
+            const target = document.getElementById(viewId);
+            if (target) target.classList.add('active');
+
+            // Update sidebar active link
+            document.querySelectorAll('.sidebar-menu li').forEach(li => li.classList.remove('active'));
+            const clickedAnchor = event ? event.currentTarget : document.querySelector(`.sidebar-menu a[onclick*="${viewId}"]`);
+            if (clickedAnchor && clickedAnchor.parentElement) {
+                clickedAnchor.parentElement.classList.add('active');
+            }
+
+            // Invalidate Map size if switching to Map view
+            if (viewId === 'gis-map' && gisMapInstance) {
+                setTimeout(() => gisMapInstance.invalidateSize(), 200);
+            }
+
+            // Close mobile drawer if open
+            document.getElementById('sidebar').classList.remove('mobile-open');
+        }
+
+        /* =========================================================================
+           4. TOAST NOTIFICATION ENGINE
+           ========================================================================= */
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            let icon = 'fa-circle-info';
+            if (type === 'critical') icon = 'fa-triangle-exclamation';
+            if (type === 'warning') icon = 'fa-bell';
+            if (type === 'safe' || type === 'success') icon = 'fa-circle-check';
+
+            toast.innerHTML = `
+                <i class="fa-solid ${icon}" style="font-size:1.1rem; margin-top:2px;"></i>
+                <div style="flex:1;">
+                    <div style="font-weight:700; margin-bottom:2px; text-transform:capitalize;">${type} Alert</div>
+                    <div style="font-size:0.8rem; color:var(--text-muted);">${message}</div>
+                </div>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.4s ease';
+                setTimeout(() => toast.remove(), 400);
+            }, 4200);
+        }
+
+        /* =========================================================================
+           5. DATA RENDERING FUNCTIONS
+           ========================================================================= */
+        function renderAllComponents() {
+            renderDashboardAlerts();
+            renderSensors();
+            renderShelters();
+            renderAlertsFull();
+            renderCitizenReports();
+            renderRescueOps();
+            renderResources();
+            renderAgencies();
+            renderRouteCards();
+        }
+
+        function renderDashboardAlerts() {
+            const tbody = document.getElementById('dashboardAlertsTable');
+            tbody.innerHTML = '';
+            state.alerts.slice(0, 4).forEach(alert => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><span class="badge ${alert.severity.toLowerCase()}">${alert.severity}</span></td>
+                    <td><strong>${alert.location}</strong></td>
+                    <td style="color:var(--text-muted);">${alert.message}</td>
+                    <td class="mono">${alert.time}</td>
+                    <td><button class="btn" style="padding:4px 8px; font-size:0.75rem;" onclick="showToast('Alert dispatched to emergency teams.', 'info')">Acknowledge</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderSensors() {
+            const container = document.getElementById('sensorGridContainer');
+            container.innerHTML = '';
+            state.sensors.forEach(s => {
+                const card = document.createElement('div');
+                card.className = 'sensor-card';
+                card.id = `sensor-elem-${s.id}`;
+                
+                let badgeClass = s.status.toLowerCase();
+                let valColor = 'var(--text-main)';
+                if (s.status === 'CRITICAL') valColor = 'var(--critical)';
+                if (s.status === 'WARNING') valColor = 'var(--warning)';
+                if (s.status === 'NORMAL') valColor = 'var(--safe)';
+
+                card.innerHTML = `
+                    <div class="sensor-top">
+                        <span><i class="fa-solid ${s.icon}"></i> ${s.name}</span>
+                        <span class="badge ${badgeClass}">${s.status}</span>
+                    </div>
+                    <div class="sensor-val" style="color:${valColor};">${s.val} <span style="font-size:0.8rem; color:var(--text-dim);">${s.unit}</span></div>
+                    <div style="font-size:0.75rem; color:var(--text-dim);"><i class="fa-solid fa-signal"></i> Sampling: 1.2s</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderShelters(filterText = '') {
+            const tbody = document.getElementById('shelterTableBody');
+            tbody.innerHTML = '';
+            
+            const filtered = state.shelters.filter(sh => 
+                sh.name.toLowerCase().includes(filterText.toLowerCase()) || 
+                sh.location.toLowerCase().includes(filterText.toLowerCase())
+            );
+
+            filtered.forEach(sh => {
+                const percent = Math.round((sh.occupied / sh.capacity) * 100);
+                const avail = sh.capacity - sh.occupied;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${sh.name}</strong></td>
+                    <td>${sh.location}</td>
+                    <td class="mono">${sh.capacity}</td>
+                    <td>
+                        <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
+                            <span>${sh.occupied} people</span>
+                            <span>${percent}%</span>
+                        </div>
+                        <div class="progress-track" style="height:6px;">
+                            <div class="progress-fill ${percent > 90 ? 'fill-red' : (percent > 65 ? 'fill-orange' : 'fill-green')}" style="width: ${percent}%;"></div>
+                        </div>
+                    </td>
+                    <td class="mono" style="font-weight:700; color:${avail < 100 ? 'var(--critical)' : 'var(--safe)'};">${avail}</td>
+                    <td><span style="font-size:0.8rem;">${sh.medical}</span></td>
+                    <td><span style="font-size:0.8rem;">${sh.food}</span></td>
+                    <td><span class="badge ${sh.status === 'OPEN' ? 'safe' : 'critical'}">${sh.status}</span></td>
+                    <td>
+                        <button class="btn" style="padding:4px 8px; font-size:0.75rem;" onclick="allocateShelterSupply('${sh.id}')"><i class="fa-solid fa-truck-ramp-box"></i> Resupply</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterShelters() {
+            const query = document.getElementById('shelterSearchInput').value;
+            renderShelters(query);
+        }
+
+        function renderAlertsFull() {
+            const tbody = document.getElementById('alertsFullTableBody');
+            tbody.innerHTML = '';
+            state.alerts.forEach((alert, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><span class="badge ${alert.severity.toLowerCase()}">${alert.severity}</span></td>
+                    <td><strong>${alert.location}</strong></td>
+                    <td>${alert.message}</td>
+                    <td class="mono">${alert.time}</td>
+                    <td style="display:flex; gap:6px;">
+                        <button class="btn warning" style="padding:4px 8px; font-size:0.75rem;" onclick="rebroadcastAlert('${alert.id}')"><i class="fa-solid fa-repeat"></i> Rebroadcast</button>
+                        <button class="btn danger" style="padding:4px 8px; font-size:0.75rem;" onclick="dismissAlert(${index})"><i class="fa-solid fa-xmark"></i> Dismiss</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('activeAlertsCountBadge').innerText = `${state.alerts.length} Live Alerts`;
+            document.getElementById('kpiAlerts').innerText = String(state.alerts.length).padStart(2, '0');
+        }
+
+        function renderCitizenReports(filterText = '') {
+            const tbody = document.getElementById('citizenReportsTableBody');
+            tbody.innerHTML = '';
+
+            const filtered = state.citizenReports.filter(r => 
+                r.name.toLowerCase().includes(filterText.toLowerCase()) || 
+                r.location.toLowerCase().includes(filterText.toLowerCase()) ||
+                r.type.toLowerCase().includes(filterText.toLowerCase())
+            );
+
+            filtered.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${r.name}</strong></td>
+                    <td><span class="badge info">${r.type}</span></td>
+                    <td>${r.location}</td>
+                    <td><span class="badge ${r.severity.toLowerCase()}">${r.severity}</span></td>
+                    <td style="color:var(--text-muted); font-size:0.8rem;">${r.desc}</td>
+                    <td class="mono">${r.time}</td>
+                    <td>
+                        <button class="btn primary" style="padding:4px 8px; font-size:0.75rem;" onclick="dispatchToReport('${r.location}')"><i class="fa-solid fa-paper-plane"></i> Dispatch</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterReports() {
+            const val = document.getElementById('reportFilterInput').value;
+            renderCitizenReports(val);
+        }
+
+        function renderRescueOps() {
+            const tbody = document.getElementById('rescueOpsTableBody');
+            tbody.innerHTML = '';
+            state.rescueTeams.forEach(tm => {
+                let badgeStyle = 'info';
+                if (tm.status === 'RESCUING') badgeStyle = 'critical';
+                if (tm.status === 'AVAILABLE') badgeStyle = 'safe';
+                if (tm.status === 'DEPLOYED') badgeStyle = 'warning';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${tm.name}</strong></td>
+                    <td>${tm.dept}</td>
+                    <td><i class="fa-solid fa-location-dot"></i> ${tm.location}</td>
+                    <td style="color:var(--text-muted);">${tm.mission}</td>
+                    <td class="mono">${tm.personnel} Specialists</td>
+                    <td><span class="badge ${badgeStyle}">${tm.status}</span></td>
+                    <td style="display:flex; gap:6px;">
+                        <button class="btn" style="padding:4px 8px; font-size:0.75rem;" onclick="showToast('Tracking coordinates uplinked for ${tm.name}', 'info')"><i class="fa-solid fa-crosshairs"></i> Track</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('kpiTeams').innerText = state.rescueTeams.length;
+        }
+
+        function renderResources() {
+            const container = document.getElementById('resourcesGridContainer');
+            container.innerHTML = '';
+            state.resources.forEach(r => {
+                const percent = Math.round((r.available / r.required) * 100);
+                const card = document.createElement('div');
+                card.className = 'sensor-card';
+                card.innerHTML = `
+                    <div class="sensor-top">
+                        <span><i class="fa-solid ${r.icon}"></i> <strong>${r.name}</strong></span>
+                        <span class="badge ${percent < 60 ? 'critical' : (percent < 85 ? 'warning' : 'safe')}">${percent}% Stocked</span>
+                    </div>
+                    <div class="sensor-val mono" style="font-size:1.3rem; margin:6px 0;">
+                        ${r.available.toLocaleString()} <span style="font-size:0.75rem; color:var(--text-dim);">/ ${r.required.toLocaleString()} ${r.unit}</span>
+                    </div>
+                    <div class="progress-track" style="height:6px; margin-bottom:8px;">
+                        <div class="progress-fill ${percent < 60 ? 'fill-red' : (percent < 85 ? 'fill-orange' : 'fill-green')}" style="width:${percent}%;"></div>
+                    </div>
+                    <button class="btn" style="width:100%; font-size:0.75rem; justify-content:center;" onclick="allocateSpecificResource('${r.name}')"><i class="fa-solid fa-dolly"></i> Request Supply Run</button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderAgencies() {
+            const container = document.getElementById('agencyGridContainer');
+            container.innerHTML = '';
+            state.agencies.forEach(ag => {
+                const card = document.createElement('div');
+                card.className = 'agency-card';
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <strong style="font-size:0.95rem;">${ag.name}</strong>
+                        <span class="badge ${ag.signal}"><i class="fa-solid fa-circle-nodes"></i> ${ag.status}</span>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--text-muted);">${ag.role}</p>
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; border-top:1px solid var(--border-color); padding-top:8px;" class="mono">
+                        <span>Active Personnel: <strong>${ag.personnel}</strong></span>
+                        <span>Field Units: <strong>${ag.units}</strong></span>
+                    </div>
+                    <button class="btn" style="font-size:0.75rem; justify-content:center;" onclick="showToast('Direct tactical comms channel established with ${ag.name}', 'info')"><i class="fa-solid fa-headset"></i> Establish Radio Net</button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderRouteCards() {
+            const container = document.getElementById('routeOptionsContainer');
+            container.innerHTML = `
+                <div class="route-card ${state.selectedRouteId === 'route-a' ? 'selected' : ''}" onclick="selectRoute('route-a')">
+                    <div class="route-header">
+                        <strong><i class="fa-solid fa-route" style="color:var(--safe);"></i> Route Alpha (Northern Bypass)</strong>
+                        <span class="badge safe">RECOMMENDED</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted);" class="mono">
+                        <span>Distance: 4.2 km</span>
+                        <span>ETA: 12 mins</span>
+                        <span>Traffic: Light / Managed</span>
+                    </div>
+                </div>
+
+                <div class="route-card ${state.selectedRouteId === 'route-b' ? 'selected' : ''}" onclick="selectRoute('route-b')">
+                    <div class="route-header">
+                        <strong><i class="fa-solid fa-route" style="color:var(--warning);"></i> Route Bravo (Central Flyover Arterial)</strong>
+                        <span class="badge warning">ALTERNATIVE</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted);" class="mono">
+                        <span>Distance: 5.1 km</span>
+                        <span>ETA: 19 mins</span>
+                        <span>Traffic: Heavy / Flowing</span>
+                    </div>
+                </div>
+
+                <div class="route-card avoid ${state.selectedRouteId === 'route-c' ? 'selected' : ''}" onclick="selectRoute('route-c')">
+                    <div class="route-header">
+                        <strong><i class="fa-solid fa-route" style="color:var(--critical);"></i> Route Charlie (Lowland Canal Expressway)</strong>
+                        <span class="badge critical">AVOID (RISK OF FLOOD)</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted);" class="mono">
+                        <span>Distance: 3.7 km</span>
+                        <span>ETA: 48 mins (Stagnant)</span>
+                        <span>Water Inundation: 0.7m</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function selectRoute(routeId) {
+            state.selectedRouteId = routeId;
+            renderRouteCards();
+            showToast(`Evacuation trajectory switched to ${routeId.toUpperCase()}`, 'info');
+        }
+
+        /* =========================================================================
+           6. MAP INTEGRATION (LEAFLET)
+           ========================================================================= */
+        function initMap() {
+            // Default center around simulated area (Chennai coordinates)
+            gisMapInstance = L.map('gisMap').setView([13.0827, 80.2707], 12);
+
+            // Dark CartoDB Tiles for Command Room aesthetic
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(gisMapInstance);
+
+            // Hazard Inundation Polygons (Critical & Warning Zones)
+            const floodZonePoly = L.polygon([
+                [13.1200, 80.2400],
+                [13.1400, 80.2800],
+                [13.0900, 80.2900],
+                [13.0800, 80.2500]
+            ], {
+                color: '#ef4444',
+                fillColor: '#ef4444',
+                fillOpacity: 0.35,
+                weight: 2
+            }).addTo(gisMapInstance).bindPopup('<b>CRITICAL HAZARD ZONE: North Basin</b><br>Inundation Depth: 1.2m<br>Mandatory Evacuation Ongoing');
+
+            const warningZonePoly = L.polygon([
+                [13.0700, 80.2600],
+                [13.0800, 80.3000],
+                [13.0300, 80.2800],
+                [13.0400, 80.2400]
+            ], {
+                color: '#f59e0b',
+                fillColor: '#f59e0b',
+                fillOpacity: 0.2,
+                weight: 2
+            }).addTo(gisMapInstance).bindPopup('<b>WARNING ZONE: Coastal Basin</b><br>Expected Surge: 3.5m');
+
+            // Shelters Markers
+            const shelterIcon = L.divIcon({
+                className: 'custom-map-icon',
+                html: '<div style="background:#10b981; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 0 10px #10b981;"><i class="fa-solid fa-person-shelter"></i></div>',
+                iconSize: [28, 28]
+            });
+            L.marker([13.0600, 80.2300], { icon: shelterIcon }).addTo(gisMapInstance).bindPopup('<b>Anna Stadium Relief Base</b><br>Capacity: 2500<br>Status: OPEN (Safe)');
+            L.marker([13.0950, 80.2100], { icon: shelterIcon }).addTo(gisMapInstance).bindPopup('<b>Govt Senior Model School</b><br>Capacity: 1200<br>Status: OPEN (Safe)');
+
+            // Hospital Marker
+            const hospitalIcon = L.divIcon({
+                className: 'custom-map-icon',
+                html: '<div style="background:#3b82f6; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 0 10px #3b82f6;"><i class="fa-solid fa-hospital"></i></div>',
+                iconSize: [28, 28]
+            });
+            L.marker([13.0750, 80.2500], { icon: hospitalIcon }).addTo(gisMapInstance).bindPopup('<b>Apollo Central Trauma Hospital</b><br>Emergency Power: Operational<br>Beds Avail: 42');
+
+            // Rescue Unit Marker
+            const rescueIcon = L.divIcon({
+                className: 'custom-map-icon',
+                html: '<div style="background:#ef4444; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 0 10px #ef4444;"><i class="fa-solid fa-truck-droplet"></i></div>',
+                iconSize: [28, 28]
+            });
+            L.marker([13.1100, 80.2600], { icon: rescueIcon }).addTo(gisMapInstance).bindPopup('<b>NDRF Strike Force 01</b><br>Mission: Active Inundation Extraction');
+
+            // Evacuation Polyline
+            const evacuationRoute = L.polyline([
+                [13.1150, 80.2550],
+                [13.0900, 80.2450],
+                [13.0600, 80.2300]
+            ], {
+                color: '#10b981',
+                weight: 4,
+                dashArray: '8, 8'
+            }).addTo(gisMapInstance).bindPopup('<b>RECOMMENDED EVACUATION CORRIDOR ALPHA</b><br>Direct flow to Anna Stadium Shelter');
+        }
+
+        function centerMapOnZone(zone) {
+            if (!gisMapInstance) return;
+            if (zone === 'critical') {
+                gisMapInstance.flyTo([13.1100, 80.2600], 14);
+                showToast('Tactical camera focusing on Critical Inundation Zone', 'critical');
+            } else {
+                gisMapInstance.flyTo([13.0827, 80.2707], 12);
+            }
+        }
+
+        /* =========================================================================
+           7. CHARTS (CHART.JS)
+           ========================================================================= */
+        function initCharts() {
+            // Weather & River chart
+            const ctxWeather = document.getElementById('weatherChart').getContext('2d');
+            weatherChartInstance = new Chart(ctxWeather, {
+                type: 'line',
+                data: {
+                    labels: ['T-10h', 'T-8h', 'T-6h', 'T-4h', 'T-2h', 'Now'],
+                    datasets: [
+                        {
+                            label: 'Rainfall (mm/hr)',
+                            data: [15, 28, 65, 95, 110, 126],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.35
+                        },
+                        {
+                            label: 'River Level (m)',
+                            data: [1.8, 2.3, 3.5, 4.4, 5.2, 5.8],
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            fill: true,
+                            tension: 0.35
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }
+                    },
+                    plugins: { legend: { labels: { color: '#f3f4f6' } } }
+                }
+            });
+
+            // Multi-Hazard Risk Matrix Chart
+            const ctxRisk = document.getElementById('riskTrendChart').getContext('2d');
+            riskTrendChartInstance = new Chart(ctxRisk, {
+                type: 'bar',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Today'],
+                    datasets: [
+                        {
+                            label: 'Flood Risk Index',
+                            data: [25, 30, 45, 60, 75, 82, 87],
+                            backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                        },
+                        {
+                            label: 'Wind Severity Index',
+                            data: [15, 20, 30, 40, 58, 62, 64],
+                            backgroundColor: 'rgba(245, 158, 11, 0.7)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }
+                    },
+                    plugins: { legend: { labels: { color: '#f3f4f6' } } }
+                }
+            });
+        }
+
+        /* =========================================================================
+           8. SIMULATION ENGINES (SENSORS, AI, EVACUATION)
+           ========================================================================= */
+        function simulateSensorFlicker() {
+            // Pick a random sensor to update slightly
+            const sIdx = Math.floor(Math.random() * state.sensors.length);
+            const sensor = state.sensors[sIdx];
+            
+            let delta = (Math.random() * 0.8 - 0.35);
+            if (sensor.name.includes('River')) delta = (Math.random() * 0.08 - 0.02);
+            if (sensor.name.includes('Rainfall')) delta = (Math.random() * 2.5 - 1.0);
+            
+            sensor.val = Math.max(0.1, Number((sensor.val + delta).toFixed(1)));
+
+            // Update DOM element directly for performance
+            const elem = document.getElementById(`sensor-elem-${sensor.id}`);
+            if (elem) {
+                const valElem = elem.querySelector('.sensor-val');
+                if (valElem) {
+                    valElem.innerHTML = `${sensor.val} <span style="font-size:0.8rem; color:var(--text-dim);">${sensor.unit}</span>`;
+                }
+            }
+
+            // Append to log console
+            const logBox = document.getElementById('sensorLogConsole');
+            if (logBox) {
+                const timeStr = new Date().toTimeString().slice(0, 8);
+                const logItem = document.createElement('div');
+                logItem.innerText = `[${timeStr}] TELEMETRY_PKT_RECV: Sensor [${sensor.name}] -> ${sensor.val} ${sensor.unit}`;
+                logBox.prepend(logItem);
+                if (logBox.children.length > 25) logBox.lastChild.remove();
+            }
+        }
+
+        function forceSensorUpdate() {
+            state.sensors.forEach(s => {
+                s.val = Number((s.val + (Math.random() * 1.5 - 0.5)).toFixed(1));
+            });
+            renderSensors();
+            showToast('All regional sensor nodes successfully queried.', 'safe');
+        }
+
+        function runAiPredictionSimulation() {
+            const btn = document.getElementById('runAiBtn');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> CALCULATING NEURAL VECTORS...';
+            btn.disabled = true;
+
+            setTimeout(() => {
+                // Generate slightly elevated realistic probabilities
+                const flood = Math.min(98, Math.floor(85 + Math.random() * 12));
+                const cyclone = Math.min(95, Math.floor(60 + Math.random() * 15));
+                const fire = Math.max(5, Math.floor(15 + Math.random() * 10));
+                const seismic = Math.max(8, Math.floor(12 + Math.random() * 10));
+
+                document.getElementById('aiFloodVal').innerText = flood + '%';
+                document.getElementById('aiFloodBar').style.width = flood + '%';
+
+                document.getElementById('aiCycloneVal').innerText = cyclone + '%';
+                document.getElementById('aiCycloneBar').style.width = cyclone + '%';
+
+                document.getElementById('aiFireVal').innerText = fire + '%';
+                document.getElementById('aiFireBar').style.width = fire + '%';
+
+                document.getElementById('aiSeismicVal').innerText = seismic + '%';
+                document.getElementById('aiSeismicBar').style.width = seismic + '%';
+
+                document.getElementById('aiSummaryHeadline').innerText = `CRITICAL THREAT: ${flood}% FLOOD INUNDATION PROBABILITY`;
+                document.getElementById('aiExplanationText').innerText = `AI synthesis confirms high-risk hydrological breach in North Zone within 45 minutes. Rapid cloudburst accumulation rate exceeding 130mm/hr will saturate storm drains. Immediate automated barrier deployment advised.`;
+
+                btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> RUN AI RISK ANALYSIS';
+                btn.disabled = false;
+                showToast('AI Ensemble risk model analysis updated with 99.4% confidence score.', 'critical');
+            }, 1200);
+        }
+
+        function triggerEvacuationExecution() {
+            showToast('BROADCASTING EMERGENCY EVACUATION ORDERS VIA SIRENS & SMS CHANNELS!', 'critical');
+            
+            let count = state.evacuatedCount;
+            const target = state.totalAtRisk;
+            
+            const interval = setInterval(() => {
+                if (count < target - 200) {
+                    count += Math.floor(Math.random() * 120 + 60);
+                    state.evacuatedCount = count;
+                    const pct = ((count / target) * 100).toFixed(1);
+                    
+                    document.getElementById('evacPeopleCount').innerText = count.toLocaleString();
+                    document.getElementById('remainPeopleCount').innerText = (target - count).toLocaleString();
+                    document.getElementById('evacProgressBar').style.width = pct + '%';
+                    document.getElementById('evacStatusBadge').innerText = `${pct}% COMPLETED`;
+                } else {
+                    clearInterval(interval);
+                    showToast('Evacuation targets successfully reached minimum safe thresholds.', 'safe');
+                }
+            }, 500);
+        }
+
+        function recalculateRoutes() {
+            showToast('AI Pathfinding Engine re-evaluating road elevation and traffic congestion...', 'info');
+            setTimeout(() => {
+                renderRouteCards();
+                showToast('Safest viable corridor: ROUTE ALPHA (12 mins ETA)', 'safe');
+            }, 800);
+        }
+
+        function refreshDashboardData() {
+            forceSensorUpdate();
+            showToast('Tactical Command metrics synced with State Operation Center.', 'safe');
+        }
+
+        /* =========================================================================
+           9. EMERGENCY MODE TOGGLE
+           ========================================================================= */
+        function toggleEmergencyMode() {
+            state.emergencyMode = !state.emergencyMode;
+            const body = document.body;
+            const banner = document.getElementById('emergencyBanner');
+            const btnText = document.getElementById('emergencyBtnText');
+            const statusText = document.getElementById('systemStatusText');
+
+            if (state.emergencyMode) {
+                body.classList.add('emergency-active');
+                banner.style.display = 'flex';
+                btnText.innerText = 'DEACTIVATE EMERGENCY';
+                statusText.innerText = 'CRITICAL EMERGENCY STATE';
+                statusText.style.color = 'var(--critical)';
+                showToast('⚠️ LEVEL-1 STATE-WIDE EMERGENCY PROTOCOL HAS BEEN ACTIVATED!', 'critical');
+            } else {
+                body.classList.remove('emergency-active');
+                banner.style.display = 'none';
+                btnText.innerText = 'ACTIVATE EMERGENCY';
+                statusText.innerText = 'SYSTEM ONLINE';
+                statusText.style.color = 'var(--safe)';
+                showToast('Emergency protocols suspended. Reverting to standby monitoring mode.', 'safe');
+            }
+        }
+
+        /* =========================================================================
+           10. CITIZEN & DISPATCH SUBMISSIONS
+           ========================================================================= */
+        function handleReportSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById('repName').value;
+            const type = document.getElementById('repType').value;
+            const loc = document.getElementById('repLocation').value;
+            const sev = document.getElementById('repSeverity').value;
+            const desc = document.getElementById('repDesc').value;
+
+            const newReport = {
+                id: 'rep-' + Date.now().toString().slice(-4),
+                name: name,
+                type: type,
+                location: loc,
+                severity: sev,
+                desc: desc,
+                time: 'Just now'
+            };
+
+            state.citizenReports.unshift(newReport);
+            renderCitizenReports();
+            document.getElementById('citizenReportForm').reset();
+            showToast(`Distress Incident from ${name} successfully lodged in queue.`, 'safe');
+        }
+
+        function dispatchToReport(loc) {
+            showToast(`Rescue Unit routed to incident location at ${loc}!`, 'critical');
+        }
+
+        /* =========================================================================
+           11. MODAL WINDOWS CONTROLS
+           ========================================================================= */
+        function openBroadcastModal() {
+            document.getElementById('broadcastModal').classList.add('active');
+        }
+        function closeBroadcastModal() {
+            document.getElementById('broadcastModal').classList.remove('active');
+        }
+
+        function submitBroadcastAlert() {
+            const hazard = document.getElementById('modalDisasterType').value;
+            const loc = document.getElementById('modalAlertLocation').value;
+            const sev = document.getElementById('modalAlertSeverity').value;
+            const msg = document.getElementById('modalAlertMsg').value;
+
+            const newAlert = {
+                id: 'alt-' + Date.now().toString().slice(-4),
+                severity: sev,
+                location: loc,
+                message: `${hazard}: ${msg}`,
+                time: 'Just now',
+                status: 'BROADCASTED'
+            };
+
+            state.alerts.unshift(newAlert);
+            renderAlertsFull();
+            renderDashboardAlerts();
+            closeBroadcastModal();
+            showToast('Emergency alert broadcast transmitted to all registered citizens & emergency sirens.', 'critical');
+        }
+
+        function dismissAlert(idx) {
+            state.alerts.splice(idx, 1);
+            renderAlertsFull();
+            renderDashboardAlerts();
+            showToast('Alert archived from active monitor.', 'info');
+        }
+
+        function rebroadcastAlert(id) {
+            showToast(`Alert [${id}] re-transmitted across all multi-channel endpoints!`, 'warning');
+        }
+
+        function openDispatchModal() {
+            document.getElementById('dispatchModal').classList.add('active');
+        }
+        function closeDispatchModal() {
+            document.getElementById('dispatchModal').classList.remove('active');
+        }
+
+        function submitDispatchUnit() {
+            const name = document.getElementById('modalUnitName').value || 'Tactical Team ' + Math.floor(Math.random() * 90 + 10);
+            const dept = document.getElementById('modalUnitDept').value;
+            const loc = document.getElementById('modalUnitLoc').value || 'Critical Sector';
+            const mission = document.getElementById('modalUnitMission').value || 'Priority Humanitarian Relief';
+
+            const newTeam = {
+                id: 'tm-' + Date.now().toString().slice(-3),
+                name: name,
+                dept: dept,
+                location: loc,
+                mission: mission,
+                personnel: 16,
+                status: 'DEPLOYED'
+            };
+
+            state.rescueTeams.unshift(newTeam);
+            renderRescueOps();
+            closeDispatchModal();
+            showToast(`Unit [${name}] dispatched to ${loc}!`, 'safe');
+        }
+
+        function openResourceModal() {
+            showToast('Resource Allocation logistics modal opened. Auto-dispatching supply convoys.', 'info');
+        }
+
+        function allocateShelterSupply(shelterId) {
+            const sh = state.shelters.find(s => s.id === shelterId);
+            if (sh) {
+                sh.food = 'Supplied (+5 Days)';
+                sh.medical = 'Available (Reinforced)';
+                renderShelters();
+                showToast(`Emergency logistical relief convoy en-route to ${sh.name}.`, 'safe');
+            }
+        }
+
+        function allocateSpecificResource(resName) {
+            showToast(`Supply requisition issued for ${resName}. Central warehouse dispatched.`, 'safe');
+        }
+    </script>
+
+    <!-- Minimal Flask integration: preserve the original UI while checking backend availability. -->
+    <script>
+        fetch('/api/health')
+            .then(response => response.json())
+            .then(data => {
+                const status = document.getElementById('systemStatusText');
+                if (status && data.status === 'ok') {
+                    status.title = 'Connected to the Python Flask demo API';
+                }
+            })
+            .catch(() => {
+                const status = document.getElementById('systemStatusText');
+                if (status) status.title = 'Frontend demo mode: backend API unavailable';
+            });
+    </script>
+</body>
+</html>
